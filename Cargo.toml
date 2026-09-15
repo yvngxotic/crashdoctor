@@ -1,0 +1,14 @@
+[package]
+name = "crashdoctor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Offline crash report doctor for Minecraft Java Edition (Forge 1.20.1)"
+license = "MIT"
+repository = "https://github.com/yvngxotic/crashdoctor"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+regex = "1.13.1"
+thiserror = "2.0.20"

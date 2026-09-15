@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crashdoctor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #16191d; --muted: #6b7280;
+    --line: #e3e6ea; --accent: #2f6feb; --code: #f1f3f5;
+    --high: #1a7f37; --medium: #9a6700; --low: #a40e26;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --card: #1c1f24; --text: #e6e8eb; --muted: #9aa2ad;
+      --line: #2b2f36; --accent: #6ea8fe; --code: #23272e;
+      --high: #3fb950; --medium: #d29922; --low: #f85149;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 64px; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  header span { color: var(--muted); font-size: 13px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 20px; }
+  #drop {
+    border: 2px dashed var(--line); border-radius: 10px; padding: 34px 16px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: border-color .15s, color .15s;
+  }
+  #drop.hot { border-color: var(--accent); color: var(--accent); }
+  #drop strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 16px; }
+  #drop.hot strong { color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.file { display: flex; gap: 12px; align-items: baseline; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+  li.file:hover { background: var(--code); }
+  li.file .name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  li.file .what { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.file .age { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .verdict { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .culprit { font-size: 19px; font-weight: 600; }
+  .pill { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: #fff; }
+  .pill.high { background: var(--high); } .pill.medium { background: var(--medium); } .pill.low { background: var(--low); }
+  .face { font-size: 15px; white-space: nowrap; }
+  .field { margin-top: 16px; }
+  .field b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+  .caution { background: var(--code); border-radius: 8px; padding: 10px 12px; }
+  ul.lines { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  ul.lines li { padding: 3px 0 3px 14px; position: relative; }
+  ul.lines li::before { content: "–"; position: absolute; left: 0; color: var(--muted); }
+  .error { border-color: var(--low); }
+  .error b { color: var(--low); }
+  .empty { color: var(--muted); }
+  footer { margin-top: 26px; color: var(--muted); font-size: 12px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>crashdoctor</h1>
+    <span>Minecraft Forge crash reports, offline</span>
+  </header>
+
+  <div id="drop" class="box">
+    <strong>Drop a crash-*.txt here</strong>
+    or click to pick one. Nothing leaves this machine.
+    <input id="picker" type="file" accept=".txt,.log" hidden>
+  </div>
+
+  <div class="box" id="recent-box" hidden>
+    <h2>Recent crash reports</h2>
+    <ul id="recent"></ul>
+  </div>
+
+  <div class="box" id="result" hidden></div>
+
+  <footer>
+i made this page with AI, i have zero design skills, im so sorry 💔  </footer>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const HEADERS = { "x-crashdoctor-token": TOKEN };
+
+const drop = document.getElementById("drop");
+const picker = document.getElementById("picker");
+const recentBox = document.getElementById("recent-box");
+const recentList = document.getElementById("recent");
+const result = document.getElementById("result");
+
+function show(html, isError) {
+  result.hidden = false;
+  result.className = isError ? "box error" : "box";
+  result.innerHTML = html;
+  result.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function esc(text) {
+  return String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function lines(items) {
+  return items.map((line) => `<li>${esc(line)}</li>`).join("");
+}
+
+function render(data) {
+  if (data.empty) {
+    show(`<b>Could not read that report</b><div class="field"><div class="caution">${esc(data.error)}</div></div>`, true);
+    return;
+  }
+  const confidence = esc(data.confidence);
+  const warn = data.confidence === "low"
+    ? `<div class="field"><div class="caution">Low confidence: no rule matched this crash, so the verdict comes from the package names in the stacktrace.</div></div>`
+    : "";
+  show(`
+    <h2>Verdict</h2>
+    <div class="verdict">
+      <span class="culprit">${esc(data.culprit)}</span>
+      <span class="pill ${confidence}">${confidence}</span>
+      <span class="face">${esc(data.face || "")}</span>
+    </div>
+    <div class="field" style="color:var(--muted);font-size:13px">${esc(data.source)}</div>
+    <div class="field"><b>Cause</b><div>${esc(data.cause)}</div></div>
+    <div class="field"><b>Evidence</b><ul class="lines">${lines(data.evidence)}</ul></div>
+    <div class="field"><b>Fix</b><ul class="lines">${lines(data.fix)}</ul></div>
+    ${data.dev_tip.length ? `<div class="field"><b>Dev tip</b><ul class="lines">${lines(data.dev_tip)}</ul></div>` : ""}
+    ${warn}
+  `, false);
+}
+
+async function loadRecent() {
+  try {
+    const response = await fetch("/api/recent", { headers: HEADERS });
+    if (!response.ok) return;
+    const items = await response.json();
+    if (!items.length) return;
+    recentList.innerHTML = items.map((item) => `
+      <li class="file" data-path="${esc(item.path)}">
+        <span class="name">${esc(item.name)}</span>
+        <span class="what">${esc(item.description || item.size)}</span>
+        <span class="age">${esc(item.age)}</span>
+      </li>`).join("");
+    recentBox.hidden = false;
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+function sendText(text) {
+  return fetch("/api/diagnose-text", { method: "POST", headers: HEADERS, body: text })
+    .then((response) => response.json())
+    .then(render)
+    .catch((err) => show(`<b>Request failed</b><div class="field">${esc(err)}</div>`, true));
+}
+
+drop.addEventListener("click", () => picker.click());
+picker.addEventListener("change", () => {
+  const file = picker.files[0];
+  if (file) file.text().then(sendText);
+});
+
+["dragenter", "dragover"].forEach((name) =>
+  drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.add("hot"); }));
+["dragleave", "drop"].forEach((name) =>
+  drop.addEventListener(name, () => drop.classList.remove("hot")));
+drop.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (file) file.text().then(sendText);
+});
+
+recentList.addEventListener("click", (event) => {
+  const row = event.target.closest("li.file");
+  if (!row) return;
+  fetch("/api/diagnose-file", { method: "POST", headers: HEADERS, body: row.dataset.path })
+    .then((response) => response.json())
+    .then(render)
+    .catch((err) => show(`<b>Request failed</b><div class="field">${esc(err)}</div>`, true));
+});
+
+loadRecent();
+</script>
+</body>
+</html>

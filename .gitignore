@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+
+# local crash reports, never published
+/crash-*.txt
+/crash-reports/
+
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.swp
+.env
