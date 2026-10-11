@@ -1,5 +1,5 @@
 use crate::model::{Confidence, Diagnosis, ModInfo, Report, StackFrame};
-
+// yeah this is vibecoded, im so fucking sorry
 pub trait Rule {
     fn name(&self) -> &'static str;
     fn check(&self, r: &Report) -> Option<Diagnosis>;
